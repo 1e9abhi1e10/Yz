@@ -47,6 +47,8 @@ app.get('/api/geocode', async (req, res) => {
 app.post('/api/getPlaces', (req, res) => {
   const destinationCountry = req.body?.destinationCountry || 'delhi';
   const budget = String(req.body?.budget ?? '0');
+  const travelStyle = (req.body?.travelStyle || '').toLowerCase();
+  const interests = (req.body?.interestsNew || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
   const budgetNum = Number(budget.replace(/[^0-9.]/g, '')) || 0;
   const cheap = budgetNum < 500;
   const mid = budgetNum >= 500 && budgetNum < 2000;
@@ -58,16 +60,71 @@ app.post('/api/getPlaces', (req, res) => {
   const format = (d) => d.toISOString().slice(0, 10);
   const days = Math.max(1, Number(req.body?.tripDuration) || 2);
 
+  const activityPools = {
+    nature: [
+      { activity: 'Hiking in National Park', time: '10:00', location: `${destinationCountry} National Park` },
+      { activity: 'Botanical Garden Visit', time: '14:00', location: `${destinationCountry} Botanical Garden` },
+      { activity: 'Lake Picnic', time: '12:00', location: `${destinationCountry} Lake` },
+    ],
+    adventure: [
+      { activity: 'Ziplining Adventure', time: '11:00', location: `${destinationCountry} Adventure Park` },
+      { activity: 'Kayaking', time: '15:00', location: `${destinationCountry} River` },
+      { activity: 'Rock Climbing', time: '13:00', location: `${destinationCountry} Cliffs` },
+    ],
+    'famous landmarks': [
+      { activity: 'Landmark Tour', time: '10:00', location: `${destinationCountry} Main Landmark` },
+      { activity: 'Photo Walk', time: '16:00', location: `${destinationCountry} Old Town` },
+    ],
+    museums: [
+      { activity: 'Museum Visit', time: '11:00', location: `${destinationCountry} Museum` },
+      { activity: 'Art Gallery', time: '15:00', location: `${destinationCountry} Art Gallery` },
+    ],
+    shopping: [
+      { activity: 'Local Market Shopping', time: '17:00', location: `${destinationCountry} Market` },
+      { activity: 'Mall Visit', time: '13:00', location: `${destinationCountry} Mall` },
+    ],
+    historical: [
+      { activity: 'Historical Site Tour', time: '10:00', location: `${destinationCountry} Fort` },
+      { activity: 'Old City Walk', time: '14:00', location: `${destinationCountry} Old City` },
+    ],
+    food: [
+      { activity: 'Street Food Crawl', time: '18:00', location: `${destinationCountry} Food Street` },
+      { activity: 'Cooking Class', time: '16:00', location: `${destinationCountry} Cooking School` },
+    ],
+    relaxation: [
+      { activity: 'Spa Session', time: '11:00', location: `${destinationCountry} Spa` },
+      { activity: 'Beach Relaxation', time: '15:00', location: `${destinationCountry} Beach` },
+    ],
+  };
+
+  const defaultActivities = [
+    { activity: 'Sightseeing', time: '09:00', location: `${destinationCountry} city center` },
+    { activity: 'Museum Visit', time: '11:00', location: `${destinationCountry} museum` },
+    { activity: 'Local Cuisine Dinner', time: '19:00', location: `${destinationCountry} restaurant` }
+  ];
+
+  function pickActivitiesForDay(dayIdx) {
+    let chosen = [];
+    if (interests.length > 0) {
+      const interest = interests[dayIdx % interests.length];
+      const pool = activityPools[interest] || [];
+      if (pool.length > 0) {
+        chosen = pool.slice(0, 2);
+      }
+    }
+    chosen.push({ activity: 'Local Cuisine Dinner', time: '19:00', location: `${destinationCountry} restaurant` });
+    if (chosen.length === 1) {
+      chosen = defaultActivities;
+    }
+    return chosen.map(act => ({ ...act, cost: act.activity === 'Museum Visit' ? museumCost : act.activity === 'Local Cuisine Dinner' ? dinnerCost : cityTourCost }));
+  }
+
   const buildDay = (i) => {
     const date = new Date(today.getTime() + i * 24 * 60 * 60 * 1000);
     return {
       day: i + 1,
       date: format(date),
-      activities: [
-        { activity: i === 0 ? 'Arrival and Check-in' : 'Sightseeing', time: '09:00', cost: i === 0 ? arrivalCost : cityTourCost, location: `${destinationCountry} city center` },
-        { activity: 'Museum Visit', time: '11:00', cost: museumCost, location: `${destinationCountry} museum` },
-        { activity: 'Local Cuisine Dinner', time: '19:00', cost: dinnerCost, location: `${destinationCountry} restaurant` }
-      ],
+      activities: pickActivitiesForDay(i),
       meals: [
         { mealType: 'Breakfast', restaurant: 'Hotel Buffet', cuisine: 'International', price: cheap ? '$0' : mid ? '$8' : '$15' },
         { mealType: 'Dinner', restaurant: 'Local Diner', cuisine: 'Indian', price: dinnerCost }
